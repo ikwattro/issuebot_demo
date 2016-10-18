@@ -42,3 +42,39 @@ for record in result:
     MERGE (t)-[r:TAGS_PR]->(pr) ON MATCH SET r.inc = r.inc + 1 ON CREATE SET r.inc = 1'''
 
     session.run(q, {"number": number, "tags": pullTags}).consume()
+
+# Retrieve tags from filenames
+
+q = '''MATCH (f:FileRecord)
+WITH split(split(f.name, ".")[0], "") as stringArray, f
+WITH
+stringArray, f,
+filter(x IN range(0, size(stringArray)-1) WHERE stringArray[x] =~ "[A-Z]") + size(stringArray)  as uppers
+UNWIND range(1, size(uppers)-1) AS i
+WITH f, collect(reduce(text="", x IN range(uppers[i-1], uppers[i]-1) | text + stringArray[x])) AS tags
+UNWIND tags as tag
+WITH tag, f
+WHERE size(tag) > 5
+MERGE (t:Tag {value: toLower(tag)})
+MERGE (t)-[r:TAGS_FILE]->(f)
+ON CREATE SET r.inc = 1 ON MATCH SET r.inc = r.inc + 1'''
+
+session.run(q).consume()
+
+# normalize filename tags and add them to prs tags
+
+q = '''MATCH (pr:PullRequest)-[:TOUCHED_FILE]->(file)<-[:TAGS_FILE]-(tag)
+RETURN pr.number as number, collect(tag.value) as tags'''
+
+result = session.run(q)
+for record in result:
+    number = record["number"]
+    tags = record["tags"]
+    newTags = stemmer_tokens(tags)
+    q = '''MATCH (pr:PullRequest {number: {number} })
+    UNWIND {tags} AS tag
+    MATCH (t:Tag {value: tag})
+    MERGE (t)-[r:TAGS_PR]->(pr)
+    ON CREATE SET r.inc = 10
+    ON MATCH SET r.inc = r.inc + 10'''
+    session.run(q, {"number": number, "tags": newTags}).consume()
