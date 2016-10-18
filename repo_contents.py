@@ -5,6 +5,12 @@ import json
 driver = GraphDatabase.driver("bolt://localhost", auth=basic_auth("",""), encrypted=False)
 session = driver.session()
 
+with open('credentials.json') as f:
+    credentials = json.loads(f.read())
+
+client_id = credentials["client_id"]
+client_secret = credentials["client_secret"]
+
 repository = "PrestaShop/PrestaShop"
 contents_url = "https://api.github.com/repos/" + repository + "/contents/"
 
